@@ -1,150 +1,76 @@
 import { useState, useEffect } from "react";
+import { supabase } from "./supabase";
 
-// Buscar CNPJ via BrasilAPI
+// ================= CNPJ =================
 async function fetchCNPJ(cnpj) {
   try {
-    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
-    if (!response.ok) throw new Error("CNPJ inválido");
-    return await response.json();
+    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+    if (!r.ok) throw new Error();
+    return await r.json();
   } catch {
     return null;
   }
 }
 
 function App() {
-  // ---------------- LOGIN ----------------
+  // ================= LOGIN (SIMPLES) =================
   const [loggedIn, setLoggedIn] = useState(false);
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
-  const [users, setUsers] = useState(() => {
-    const saved = localStorage.getItem("users");
-    return saved ? JSON.parse(saved) : [{ username: "admin", password: "admin" }];
-  });
-
-  useEffect(() => {
-    localStorage.setItem("users", JSON.stringify(users));
-  }, [users]);
 
   const handleLogin = (e) => {
     e.preventDefault();
-    const found = users.find(
-      (u) =>
-        u.username === loginUser.trim() &&
-        u.password === loginPass.trim()
-    );
-    if (found) setLoggedIn(true);
-    else alert("Usuário ou senha incorretos!");
+    if (loginUser === "admin" && loginPass === "admin") {
+      setLoggedIn(true);
+    } else {
+      alert("Usuário ou senha inválidos");
+    }
   };
 
-  // ---------------- MENU ----------------
+  // ================= MENU =================
   const [section, setSection] = useState("processos");
 
-  // ---------------- ESTADOS PERSISTENTES ----------------
-  const [processos, setProcessos] = useState(() =>
-    JSON.parse(localStorage.getItem("processos") || "[]")
-  );
-  const [prestadores, setPrestadores] = useState(() =>
-    JSON.parse(localStorage.getItem("prestadores") || "[]")
-  );
-  const [procedimentos, setProcedimentos] = useState(() =>
-    JSON.parse(localStorage.getItem("procedimentos") || "[]")
-  );
-  const [credenciados, setCredenciados] = useState(() =>
-    JSON.parse(localStorage.getItem("credenciados") || "[]")
-  );
+  // ================= DADOS (SUPABASE) =================
+  const [processos, setProcessos] = useState([]);
+  const [prestadores, setPrestadores] = useState([]);
+  const [procedimentos, setProcedimentos] = useState([]);
+  const [credenciados, setCredenciados] = useState([]);
 
   useEffect(() => {
-    localStorage.setItem("processos", JSON.stringify(processos));
-  }, [processos]);
+    carregarTudo();
+  }, []);
 
-  useEffect(() => {
-    localStorage.setItem("prestadores", JSON.stringify(prestadores));
-  }, [prestadores]);
+  async function carregarTudo() {
+    await Promise.all([
+      fetchProcessos(),
+      fetchPrestadores(),
+      fetchProcedimentos(),
+      fetchCredenciados(),
+    ]);
+  }
 
-  useEffect(() => {
-    localStorage.setItem("procedimentos", JSON.stringify(procedimentos));
-  }, [procedimentos]);
+  async function fetchProcessos() {
+    const { data } = await supabase.from("processos").select("*").order("created_at", { ascending: false });
+    setProcessos(data || []);
+  }
 
-  useEffect(() => {
-    localStorage.setItem("credenciados", JSON.stringify(credenciados));
-  }, [credenciados]);
+  async function fetchPrestadores() {
+    const { data } = await supabase.from("prestadores").select("*").order("created_at", { ascending: false });
+    setPrestadores(data || []);
+  }
 
-  // ---------------- BACKUP ----------------
-  const exportBackup = () => {
-    const backup = {
-      dataBackup: new Date().toISOString(),
-      processos,
-      prestadores,
-      procedimentos,
-      credenciados,
-    };
+  async function fetchProcedimentos() {
+    const { data } = await supabase.from("procedimentos").select("*").order("created_at", { ascending: false });
+    setProcedimentos(data || []);
+  }
 
-    const blob = new Blob(
-      [JSON.stringify(backup, null, 2)],
-      { type: "application/json" }
-    );
+  async function fetchCredenciados() {
+    const { data } = await supabase.from("credenciados").select("*").order("created_at", { ascending: false });
+    setCredenciados(data || []);
+  }
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `backup-credenciamentos-${new Date()
-      .toISOString()
-      .slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const importBackup = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target.result);
-
-        if (
-          !data.processos ||
-          !data.prestadores ||
-          !data.procedimentos ||
-          !data.credenciados
-        ) {
-          alert("Arquivo de backup inválido.");
-          return;
-        }
-
-        if (
-          !window.confirm(
-            "Esta ação substituirá TODOS os dados atuais. Deseja continuar?"
-          )
-        ) {
-          return;
-        }
-
-        setProcessos(data.processos);
-        setPrestadores(data.prestadores);
-        setProcedimentos(data.procedimentos);
-        setCredenciados(data.credenciados);
-
-        alert("Backup importado com sucesso!");
-      } catch {
-        alert("Erro ao importar backup.");
-      }
-    };
-
-    reader.readAsText(file);
-  };
-
-  // ---------------- MODAIS ----------------
-  const [modalOpen, setModalOpen] = useState({
-    processo: false,
-    prestador: false,
-    procedimento: false,
-    credenciado: false,
-  });
-
-  // ---------------- FORMULÁRIOS ----------------
-  const [formProcesso, setFormProcesso] = useState({
+  // ================= FORMULÁRIOS =================
+  const [formProcesso, setForm = useState({
     numeroProcesso: "",
     numeroCredenciamento: "",
     status: "Aberto",
@@ -152,7 +78,7 @@ function App() {
     dataAbertura: "",
     dataEncerramento: "",
     procedimentosVinculados: [],
-  });
+  })][0];
 
   const [formPrestador, setFormPrestador] = useState({
     nome: "",
@@ -160,29 +86,26 @@ function App() {
     local: "",
   });
 
-  const [formProcedimento, setFormProcedimento] = useState({
-    codigo: "",
-    nome: "",
-    tipo: "Consultas",
-    especificacoes: [{ codigo: "", descricao: "" }],
-  });
+  // ================= CRUD =================
+  async function addProcesso(e) {
+    e.preventDefault();
+    const { error } = await supabase.from("processos").insert([formProcesso]);
+    if (error) return alert("Erro ao salvar processo");
+    fetchProcessos();
+  }
 
-  const [formCredenciado, setFormCredenciado] = useState({
-    processo: "",
-    prestador: "",
-    procedimentos: [],
-    data: "",
-  });
+  async function deleteProcesso(id) {
+    if (!confirm("Excluir processo?")) return;
+    await supabase.from("processos").delete().eq("id", id);
+    fetchProcessos();
+  }
 
-  // ---------------- FILTROS ----------------
-  const [filtroPrestador, setFiltroPrestador] = useState("");
-  const [filtroProcesso, setFiltroProcesso] = useState("");
-
-  // ---------------- FUNÇÕES ----------------
-  const handleProcessoChange = (e) => {
-    const { name, value } = e.target;
-    setFormProcesso({ ...formProcesso, [name]: value });
-  };
+  async function addPrestador(e) {
+    e.preventDefault();
+    const { error } = await supabase.from("prestadores").insert([formPrestador]);
+    if (error) return alert("Erro ao salvar prestador");
+    fetchPrestadores();
+  }
 
   const handlePrestadorChange = async (e) => {
     const { name, value } = e.target;
@@ -191,144 +114,77 @@ function App() {
     if (name === "cnpj" && value.replace(/\D/g, "").length === 14) {
       const data = await fetchCNPJ(value.replace(/\D/g, ""));
       if (data) {
-        setFormPrestador((prev) => ({
-          ...prev,
-          nome: data.razao_social || prev.nome,
-          local: data.municipio || prev.local,
+        setFormPrestador((p) => ({
+          ...p,
+          nome: data.razao_social || p.nome,
+          local: data.municipio || p.local,
         }));
       }
     }
   };
 
-  // ---------------- CRUD ----------------
-  const addProcesso = (e) => {
-    e.preventDefault();
-    setProcessos([formProcesso, ...processos]);
-    setFormProcesso({
-      numeroProcesso: "",
-      numeroCredenciamento: "",
-      status: "Aberto",
-      categoria: "Consultas",
-      dataAbertura: "",
-      dataEncerramento: "",
-      procedimentosVinculados: [],
-    });
-    setModalOpen({ ...modalOpen, processo: false });
-  };
-
-  const deleteProcesso = (i) => {
-    if (window.confirm("Deseja excluir este processo?")) {
-      const tmp = [...processos];
-      tmp.splice(i, 1);
-      setProcessos(tmp);
-    }
-  };
-
-  // ---------------- ESTILOS ----------------
-  const styles = {
-    body: { fontFamily: "sans-serif" },
-    header: {
-      backgroundColor: "#1e90ff",
-      color: "white",
-      padding: "20px",
-      textAlign: "center",
-    },
-    nav: {
-      display: "flex",
-      justifyContent: "center",
-      gap: "15px",
-      margin: "15px 0",
-    },
-    navButton: {
-      padding: "10px 15px",
-      backgroundColor: "#1e90ff",
-      color: "white",
-      border: "none",
-      borderRadius: "5px",
-      cursor: "pointer",
-    },
-  };
-
-  // ---------------- LOGIN ----------------
+  // ================= LOGIN =================
   if (!loggedIn) {
     return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-          backgroundColor: "#e6f0ff",
-        }}
-      >
-        <form
-          onSubmit={handleLogin}
-          style={{
-            border: "1px solid #ddd",
-            padding: "30px",
-            borderRadius: "10px",
-            backgroundColor: "#ffffff",
-            textAlign: "center",
-          }}
-        >
-          <h2 style={{ color: "#1e90ff" }}>
-            AMVAP SAÚDE - GESTÃO DE CREDENCIAMENTOS
-          </h2>
-          <input
-            type="text"
-            placeholder="Usuário"
-            value={loginUser}
-            onChange={(e) => setLoginUser(e.target.value)}
-          />
-          <br />
-          <input
-            type="password"
-            placeholder="Senha"
-            value={loginPass}
-            onChange={(e) => setLoginPass(e.target.value)}
-          />
-          <br />
-          <button type="submit">Entrar</button>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+        <form onSubmit={handleLogin} style={{ padding: 30, border: "1px solid #ccc", borderRadius: 10 }}>
+          <h2>AMVAP SAÚDE</h2>
+          <input placeholder="Usuário" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} /><br />
+          <input type="password" placeholder="Senha" value={loginPass} onChange={(e) => setLoginPass(e.target.value)} /><br />
+          <button>Entrar</button>
         </form>
       </div>
     );
   }
 
-  // ---------------- RENDER PRINCIPAL ----------------
+  // ================= UI =================
   return (
-    <div style={styles.body}>
-      <header style={styles.header}>
-        <h1>AMVAP SAÚDE - Gestão de Credenciamentos</h1>
-
-        <button onClick={exportBackup}>📦 Backup</button>
-
-        <input
-          type="file"
-          accept=".json"
-          id="importBackup"
-          style={{ display: "none" }}
-          onChange={importBackup}
-        />
-
-        <button onClick={() => document.getElementById("importBackup").click()}>
-          📥 Importar Backup
-        </button>
+    <div>
+      <header style={{ background: "#1e90ff", color: "#fff", padding: 20 }}>
+        <h1>AMVAP SAÚDE – Gestão de Credenciamentos</h1>
       </header>
 
-      <nav style={styles.nav}>
-        <button
-          style={styles.navButton}
-          onClick={() => setSection("processos")}
-        >
-          Processos Licitatórios
-        </button>
-        <button
-          style={styles.navButton}
-          onClick={() => setSection("prestadores")}
-        >
-          Prestadores
-        </button>
+      <nav style={{ display: "flex", gap: 10, padding: 10 }}>
+        <button onClick={() => setSection("processos")}>Processos</button>
+        <button onClick={() => setSection("prestadores")}>Prestadores</button>
       </nav>
+
+      {section === "processos" && (
+        <div>
+          <h2>Processos</h2>
+          <form onSubmit={addProcesso}>
+            <input placeholder="Número Processo" onChange={(e) => setFormProcesso({ ...formProcesso, numeroProcesso: e.target.value })} />
+            <button>Adicionar</button>
+          </form>
+
+          <ul>
+            {processos.map((p) => (
+              <li key={p.id}>
+                {p.numeroProcesso}
+                <button onClick={() => deleteProcesso(p.id)}>Excluir</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {section === "prestadores" && (
+        <div>
+          <h2>Prestadores</h2>
+          <form onSubmit={addPrestador}>
+            <input name="cnpj" placeholder="CNPJ" onChange={handlePrestadorChange} />
+            <input name="nome" placeholder="Razão Social" onChange={handlePrestadorChange} />
+            <input name="local" placeholder="Local" onChange={handlePrestadorChange} />
+            <button>Adicionar</button>
+          </form>
+
+          <ul>
+            {prestadores.map((p) => (
+              <li key={p.id}>{p.nome} – {p.cnpj}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
