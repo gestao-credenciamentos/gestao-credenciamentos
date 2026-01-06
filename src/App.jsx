@@ -2,257 +2,116 @@ import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import "./App.css";
 
-/* ======================================================
-   SUPABASE
-   (usa variáveis do Vercel/Vite)
-   ====================================================== */
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-export const supabase =
-  supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-
-/* ======================================================
-   BUSCA CNPJ (BrasilAPI)
-   ====================================================== */
-async function fetchCNPJ(cnpj) {
-  try {
-    const r = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
-    if (!r.ok) throw new Error();
-    return await r.json();
-  } catch {
-    return null;
-  }
-}
+/* ================= SUPABASE ================= */
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 export default function App() {
-  /* ================= LOGIN SIMPLES ================= */
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [loginUser, setLoginUser] = useState("");
-  const [loginPass, setLoginPass] = useState("");
-
-  const handleLogin = (e) => {
-    e.preventDefault();
-    if (loginUser === "admin" && loginPass === "admin") setLoggedIn(true);
-    else alert("Usuário ou senha inválidos");
-  };
-
-  /* ================= MENU ================= */
-  const [section, setSection] = useState("processos");
-
-  /* ================= DADOS ================= */
   const [processos, setProcessos] = useState([]);
-  const [prestadores, setPrestadores] = useState([]);
 
-  useEffect(() => {
-    carregarProcessos();
-    carregarPrestadores();
-  }, []);
-
-  async function carregarProcessos() {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from("processos")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (!error && Array.isArray(data)) setProcessos(data);
-  }
-
-  async function carregarPrestadores() {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from("prestadores")
-      .select("*")
-      .order("created_at", { ascending: false });
-    if (!error && Array.isArray(data)) setPrestadores(data);
-  }
-
-  /* ================= FORM PROCESSO ================= */
-  const [formProcesso, setFormProcesso] = useState({
+  const [form, setForm] = useState({
     numeroProcesso: "",
     numeroCredenciamento: "",
     dataInicioVigencia: "",
     dataFimVigencia: "",
   });
 
-  const handleProcessoChange = (e) => {
-    const { name, value } = e.target;
-    setFormProcesso((p) => ({ ...p, [name]: value }));
-  };
+  useEffect(() => {
+    carregar();
+  }, []);
 
-  async function addProcesso(e) {
+  async function carregar() {
+    const { data } = await supabase
+      .from("processos")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    setProcessos(data || []);
+  }
+
+  function handleChange(e) {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  }
+
+  async function salvar(e) {
     e.preventDefault();
-    if (!supabase) return alert("Supabase não configurado");
-    const { error } = await supabase.from("processos").insert([formProcesso]);
-    if (error) return alert("Erro ao salvar processo");
-    setFormProcesso({
+
+    await supabase.from("processos").insert([form]);
+
+    setForm({
       numeroProcesso: "",
       numeroCredenciamento: "",
       dataInicioVigencia: "",
       dataFimVigencia: "",
     });
-    carregarProcessos();
+
+    carregar();
   }
 
-  async function deleteProcesso(id) {
-    if (!window.confirm("Deseja excluir este processo?")) return;
+  async function excluir(id) {
+    if (!window.confirm("Excluir processo?")) return;
     await supabase.from("processos").delete().eq("id", id);
-    carregarProcessos();
+    carregar();
   }
 
-  /* ================= FORM PRESTADOR ================= */
-  const [formPrestador, setFormPrestador] = useState({
-    nome: "",
-    cnpj: "",
-    local: "",
-  });
-
-  const handlePrestadorChange = async (e) => {
-    const { name, value } = e.target;
-    setFormPrestador((p) => ({ ...p, [name]: value }));
-
-    if (name === "cnpj" && value.replace(/\D/g, "").length === 14) {
-      const data = await fetchCNPJ(value.replace(/\D/g, ""));
-      if (data) {
-        setFormPrestador((p) => ({
-          ...p,
-          nome: data.razao_social || p.nome,
-          local: data.municipio || p.local,
-        }));
-      }
-    }
-  };
-
-  async function addPrestador(e) {
-    e.preventDefault();
-    if (!supabase) return alert("Supabase não configurado");
-    const { error } = await supabase.from("prestadores").insert([formPrestador]);
-    if (error) return alert("Erro ao salvar prestador");
-    setFormPrestador({ nome: "", cnpj: "", local: "" });
-    carregarPrestadores();
-  }
-
-  /* ================= LOGIN ================= */
-  if (!loggedIn) {
-    return (
-      <div className="login">
-        <form onSubmit={handleLogin} className="login-card">
-          <h2>AMVAP SAÚDE</h2>
-          <input
-            placeholder="Usuário"
-            value={loginUser}
-            onChange={(e) => setLoginUser(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Senha"
-            value={loginPass}
-            onChange={(e) => setLoginPass(e.target.value)}
-          />
-          <button>Entrar</button>
-        </form>
-      </div>
-    );
-  }
-
-  /* ================= UI ================= */
   return (
     <div>
-      <header className="header">
+      <header style={{ background: "#1e90ff", padding: 20, color: "#fff" }}>
         <h1>AMVAP SAÚDE – Gestão de Credenciamentos</h1>
       </header>
 
-      <nav className="menu">
-        <button onClick={() => setSection("processos")}>Processos</button>
-        <button onClick={() => setSection("prestadores")}>Prestadores</button>
-      </nav>
+      <main style={{ padding: 20 }}>
+        <h2>Processos</h2>
 
-      {section === "processos" && (
-        <div className="card">
-          <h2>Processos</h2>
+        <form onSubmit={salvar}>
+          <input
+            name="numeroProcesso"
+            placeholder="Número do Processo"
+            value={form.numeroProcesso}
+            onChange={handleChange}
+            required
+          />
 
-          <form onSubmit={addProcesso} className="form-grid">
-            <input
-              name="numeroProcesso"
-              placeholder="Número do Processo"
-              value={formProcesso.numeroProcesso}
-              onChange={handleProcessoChange}
-              required
-            />
-            <input
-              name="numeroCredenciamento"
-              placeholder="Número do Credenciamento"
-              value={formProcesso.numeroCredenciamento}
-              onChange={handleProcessoChange}
-              required
-            />
-            <input
-              type="date"
-              name="dataInicioVigencia"
-              value={formProcesso.dataInicioVigencia}
-              onChange={handleProcessoChange}
-              required
-            />
-            <input
-              type="date"
-              name="dataFimVigencia"
-              value={formProcesso.dataFimVigencia}
-              onChange={handleProcessoChange}
-              required
-            />
-            <button>Adicionar</button>
-          </form>
+          <input
+            name="numeroCredenciamento"
+            placeholder="Número do Credenciamento"
+            value={form.numeroCredenciamento}
+            onChange={handleChange}
+            required
+          />
 
-          <ul className="list">
-            {processos.map((p) => (
-              <li key={p.id}>
-                <strong>{p.numeroProcesso}</strong> — Cred.:{" "}
-                {p.numeroCredenciamento} — Vigência:{" "}
-                {p.dataInicioVigencia} a {p.dataFimVigencia}
-                <button onClick={() => deleteProcesso(p.id)}>Excluir</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+          <input
+            type="date"
+            name="dataInicioVigencia"
+            value={form.dataInicioVigencia}
+            onChange={handleChange}
+            required
+          />
 
-      {section === "prestadores" && (
-        <div className="card">
-          <h2>Prestadores</h2>
+          <input
+            type="date"
+            name="dataFimVigencia"
+            value={form.dataFimVigencia}
+            onChange={handleChange}
+            required
+          />
 
-          <form onSubmit={addPrestador} className="form-grid">
-            <input
-              name="cnpj"
-              placeholder="CNPJ"
-              value={formPrestador.cnpj}
-              onChange={handlePrestadorChange}
-              required
-            />
-            <input
-              name="nome"
-              placeholder="Razão Social"
-              value={formPrestador.nome}
-              onChange={handlePrestadorChange}
-              required
-            />
-            <input
-              name="local"
-              placeholder="Local de Atendimento"
-              value={formPrestador.local}
-              onChange={handlePrestadorChange}
-              required
-            />
-            <button>Adicionar</button>
-          </form>
+          <button type="submit">Adicionar</button>
+        </form>
 
-          <ul className="list">
-            {prestadores.map((p) => (
-              <li key={p.id}>
-                {p.nome} — {p.cnpj} ({p.local})
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+        <ul>
+          {processos.map((p) => (
+            <li key={p.id}>
+              <strong>{p.numeroProcesso}</strong> — Credenciamento{" "}
+              {p.numeroCredenciamento} — Vigência {p.dataInicioVigencia} até{" "}
+              {p.dataFimVigencia}
+              <button onClick={() => excluir(p.id)}>Excluir</button>
+            </li>
+          ))}
+        </ul>
+      </main>
     </div>
   );
 }
